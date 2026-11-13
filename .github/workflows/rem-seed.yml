@@ -19,8 +19,12 @@ jobs:
           if (-not $part0) { Write-Output 'no-temp-volume'; exit 0 }
           $disk = Get-Disk -Number $part0.DiskNumber
           Write-Output "TEMPDISK friendly=$($disk.FriendlyName) bus=$($disk.BusType) serial=$($disk.SerialNumber)"
-          if (-not $disk.SerialNumber -or ($disk.SerialNumber.Trim() -eq '')) { Write-Output 'no-serial-identity'; exit 0 }
-          $serial = ($disk.SerialNumber -replace '[^0-9A-Fa-f_]', '').Trim('_')
+          $keyType = 'serial'
+          $rawId = $disk.SerialNumber
+          if (-not $rawId -or ($rawId.Trim() -eq '')) { $keyType = 'uniqueid'; $rawId = $disk.UniqueId }
+          if (-not $rawId -or ($rawId.Trim() -eq '')) { Write-Output 'no-disk-identity'; exit 0 }
+          Write-Output "KEYTYPE $keyType"
+          $serial = ($rawId -replace '[^0-9A-Za-z_]', '').Trim('_')
           $part = $part0
           $letter = $part.DriveLetter
           $partOffset = $part.Offset
