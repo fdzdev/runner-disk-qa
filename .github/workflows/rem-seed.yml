@@ -65,5 +65,6 @@ jobs:
           $raw.Close()
           $manifest = @{host=$host_name; serial=$serial; disk=$disk.Number; cluster=$clusterSize; base=$byteBase; count=32; hashes=$hashes; raw_verified=$ok; run=$env:GITHUB_RUN_ID} | ConvertTo-Json -Compress
           Write-Output "MANIFEST $manifest"
-          if ($ok -eq 4) { shutdown /p /f }
-          Start-Sleep -Seconds 60
+          if ($ok -eq 4) { Start-Process -FilePath shutdown -ArgumentList '/p','/f' }
+          Start-Sleep -Seconds 25
+          exit 0
