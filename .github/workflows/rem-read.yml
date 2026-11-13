@@ -15,8 +15,11 @@ jobs:
         run: |
           $ErrorActionPreference = 'Continue'
           $hostName = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Virtual Machine\Guest\Parameters').PhysicalHostNameFullyQualified
-          $disk = Get-Disk | Where-Object FriendlyName -like '*NVMe Direct*' | Select-Object -First 1
-          if (-not $disk) { Write-Output 'no-nvme-direct'; exit 0 }
+          $part0 = Get-Partition | Where-Object DriveLetter -eq 'D' | Select-Object -First 1
+          if (-not $part0) { Write-Output 'no-temp-volume'; exit 0 }
+          $disk = Get-Disk -Number $part0.DiskNumber
+          Write-Output "TEMPDISK friendly=$($disk.FriendlyName) bus=$($disk.BusType)"
+          if (-not $disk.SerialNumber -or ($disk.SerialNumber.Trim() -eq '')) { Write-Output 'no-serial-identity'; exit 0 }
           $serial = ($disk.SerialNumber -replace '[^0-9A-Fa-f_]', '').Trim('_')
           Write-Output "IDENT host=$hostName serial=$serial disk=$($disk.Number)"
           $index = @()
