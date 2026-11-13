@@ -1,0 +1,46 @@
+name: Remanence windows NVMe read
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  read:
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - name: Match serial manifests and hash-compare exact offsets only
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $hostName = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Virtual Machine\Guest\Parameters').PhysicalHostNameFullyQualified
+          $disk = Get-Disk | Where-Object FriendlyName -like '*NVMe Direct*' | Select-Object -First 1
+          if (-not $disk) { Write-Output 'no-nvme-direct'; exit 0 }
+          $serial = ($disk.SerialNumber -replace '[^0-9A-Fa-f_]', '').Trim('_')
+          Write-Output "IDENT host=$hostName serial=$serial disk=$($disk.Number)"
+          $index = @()
+          try {
+            $index = Invoke-RestMethod -TimeoutSec 20 -Uri 'https://raw.githubusercontent.com/fdzdev/runner-disk-qa/main/index.json'
+            Write-Output "INDEX-FETCH ok entries=$($index.Count)"
+          } catch { Write-Output "INDEX-FETCH failed: $($_.Exception.Message)" }
+          $verdict = @{host=$hostName; serial=$serial; run=$env:GITHUB_RUN_ID; indexed=$index.Count; checked=0; matches=@()}
+          $sha = [System.Security.Cryptography.SHA256]::Create()
+          foreach ($m in $index) {
+            if ($m.serial -ne $serial) { continue }
+            $verdict.checked++
+            $raw = [System.IO.File]::Open("\\.\PHYSICALDRIVE$($disk.Number)", 'Open', 'Read', [System.IO.FileShare]::ReadWrite)
+            $found = 0
+            for ($i = 0; $i -lt $m.count; $i++) {
+              $raw.Seek([int64]$m.base + $i * 4096, 'Begin') | Out-Null
+              $buf = New-Object byte[] 4096
+              $raw.Read($buf, 0, 4096) | Out-Null
+              $hh = ([BitConverter]::ToString($sha.ComputeHash($buf)) -replace '-', '').ToLower()
+              if ($hh -eq $m.hashes[$i]) { $found++ }
+            }
+            $raw.Close()
+            $verdict.matches += @{seed_run=$m.run; found=$found; of=$m.count}
+            Write-Output "SERIAL-MATCH seed_run=$($m.run) found=$found of=$($m.count)"
+          }
+          if ($verdict.checked -eq 0) { Write-Output 'no-serial-overlap' }
+          Write-Output ("VERDICTJSON " + ($verdict | ConvertTo-Json -Compress -Depth 4))
